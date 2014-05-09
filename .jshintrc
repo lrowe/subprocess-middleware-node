@@ -1,0 +1,7 @@
+{
+    "globalstrict": true,
+    "evil": true,
+    "newcap": false,
+    "node": true,
+    "sub": true
+}
