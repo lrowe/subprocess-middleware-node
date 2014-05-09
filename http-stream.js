@@ -32,7 +32,9 @@ var HTTPStream = module.exports.HTTPStream = function (options) {
   this.connection = {
     _httpMessage: null,
     write: this.push.bind(this),
-    writable: true
+    writable: true,
+    cork: noop,
+    uncork: noop
   };
   if (options.captureConsole) {
     this._stdout = console._stdout = new BufferIO();
