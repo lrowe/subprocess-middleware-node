@@ -15,6 +15,14 @@ var simple = [
   'Hello'
 ].join('\r\n');
 
+var no_content_length = [
+  'HTTP/1.1 200 OK',
+  'Connection: close',
+  'Transfer-Encoding: identity',
+  '',
+  'Hello'
+].join('\r\n');
+
 var x_test = [
   'HTTP/1.1 200 OK',
   'Connection: keep-alive',
@@ -46,6 +54,8 @@ var long_content = [
 ].join('\r\n');
 
 function identity_test_case(chunks) {
+  var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
+
   return function (done) {
     var http_stream = new HTTPStream();
     var out = new BufferIO();
@@ -53,6 +63,9 @@ function identity_test_case(chunks) {
     chunks.forEach(function (chunk) {
       http_stream.write(chunk);
     });
+    if (close) {
+      http_stream.end();
+    }
     process.nextTick(done(function () {
       buster.assert.equals(out.toString(), chunks.join(''));
     }));
@@ -70,6 +83,7 @@ function transform_test_case(chunks, transform, expect) {
   if (!expect) {
     expect = buster.assert.equals.bind(buster.assert, chunks.join(''));
   }
+  var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
   return function (done) {
     var app = transformResponse(transform);
@@ -79,6 +93,9 @@ function transform_test_case(chunks, transform, expect) {
     chunks.forEach(function (chunk) {
       http_stream.write(chunk);
     });
+    if (close) {
+      http_stream.end();
+    }
     process.nextTick(done(function () {
       expect(out.toString());
     }));
@@ -91,6 +108,7 @@ function connect_test_case(chunks, transform, expect) {
   if (!expect) {
     expect = buster.assert.equals.bind(buster.assert, chunks.join(''));
   }
+  var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
   return function (done) {
     var app = connect().use(transformResponse(transform));
@@ -100,6 +118,9 @@ function connect_test_case(chunks, transform, expect) {
     chunks.forEach(function (chunk) {
       http_stream.write(chunk);
     });
+    if (close) {
+      http_stream.end();
+    }
     process.nextTick(done(function () {
       expect(out.toString());
     }));
@@ -128,6 +149,19 @@ function connect_test_case(chunks, transform, expect) {
 
 });
 
+
+[
+  {name: 'HTTPStream identity', test: identity_test_case},
+].forEach(function (test_case) {
+  var test = test_case.test;
+
+  buster.testCase(test_case.name, {
+    'no content length': test([no_content_length]),
+  });
+
+});
+
+
 [
   {name: 'HTTPStream transform basic', test: transform_test_case},
   {name: 'HTTPStream transform connect', test: connect_test_case}
@@ -135,6 +169,20 @@ function connect_test_case(chunks, transform, expect) {
   var test = test_case.test;
 
   buster.testCase(test_case.name, {
+    'no content length': test(
+      [no_content_length],
+      null,
+      function (result) {
+        buster.assert.equals(result, [
+          'HTTP/1.1 200 OK',
+          'Connection: close',
+          'Transfer-Encoding: identity',
+          'Content-Length: 5',
+          '',
+          'Hello'
+        ].join('\r\n'));
+      }
+      ),
     'transform changes content length': test(
       [simple],
       function (body, res) {

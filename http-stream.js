@@ -140,27 +140,24 @@ HTTPStream.prototype.onBody = function(chunk, offset, length) {
   var res = this.res;
   var parser = this.parser;
   var part = chunk.slice(offset, offset + length);
-  if (parser.state === "BODY_RAW" && parser.body_bytes === length) {
-    try {
-      res.end(part);
-    } catch (err) {
-      this.handle_error(err);
-    }
-  } else {
-    try {
-      res.write(part);
-    } catch (err) {
-      this.handle_error(err);
-    }
+  try {
+    res.write(part);
+  } catch (err) {
+    this.handle_error(err);
   }
 };
 
 HTTPStream.prototype.onMessageComplete = function() {
-  if (this.parser.state !== "BODY_RAW") {
-    try {
-      this.res.end();
-    } catch (err) {
-      this.handle_error(err);
-    }
+  try {
+    this.res.end();
+  } catch (err) {
+    this.handle_error(err);
   }
+};
+
+HTTPStream.prototype._flush = function(done) {
+  if (this.parser.state === "BODY_RAW") {
+    this.onMessageComplete();
+  }
+  done();
 };
