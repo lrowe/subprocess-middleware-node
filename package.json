@@ -9,12 +9,12 @@
   "bugs": "https://github.com/lrowe/subprocess-middleware-node/issues",
   "repository": "lrowe/subprocess-middleware-node",
   "scripts": {
-    "test": "node_modules/.bin/buster-test"
+    "test": "node_modules/.bin/mocha"
   },
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
-    "buster": "^0.7.13",
-    "connect": "3.0.0-rc.2"
+    "chai": "^3.5.0",
+    "connect": "3.0.0-rc.2",
+    "mocha": "^2.4.5"
   }
 }

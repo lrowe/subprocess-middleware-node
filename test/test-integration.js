@@ -1,7 +1,7 @@
 'use strict';
-var buster = require('buster');
 var HTTPStream = require('../index').HTTPStream;
 var BufferIO = require('../index').BufferIO;
+var assert = require('chai').assert;
 var bufferedResponse = require('../index').bufferedResponse;
 var transformResponse = require('../index').transformResponse;
 var connect = require('connect');
@@ -66,9 +66,10 @@ function identity_test_case(chunks) {
     if (close) {
       http_stream.end();
     }
-    process.nextTick(done(function () {
-      buster.assert.equals(out.toString(), chunks.join(''));
-    }));
+    process.nextTick(function () {
+      assert.equal(out.toString(), chunks.join(''));
+      done();
+    });
   };
 }
 
@@ -81,7 +82,7 @@ function identity_transform(body, res) {
 function transform_test_case(chunks, transform, expect) {
   transform = transform || identity_transform;
   if (!expect) {
-    expect = buster.assert.equals.bind(buster.assert, chunks.join(''));
+    expect = assert.equal.bind(assert, chunks.join(''));
   }
   var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
@@ -96,9 +97,10 @@ function transform_test_case(chunks, transform, expect) {
     if (close) {
       http_stream.end();
     }
-    process.nextTick(done(function () {
+    process.nextTick(function () {
       expect(out.toString());
-    }));
+      done();
+    });
   };
 }
 
@@ -106,7 +108,7 @@ function transform_test_case(chunks, transform, expect) {
 function connect_test_case(chunks, transform, expect) {
   transform = transform || identity_transform;
   if (!expect) {
-    expect = buster.assert.equals.bind(buster.assert, chunks.join(''));
+    expect = assert.equal.bind(assert, chunks.join(''));
   }
   var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
@@ -121,9 +123,10 @@ function connect_test_case(chunks, transform, expect) {
     if (close) {
       http_stream.end();
     }
-    process.nextTick(done(function () {
+    process.nextTick(function () {
       expect(out.toString());
-    }));
+      done();
+    });
   };
 }
 
@@ -135,16 +138,16 @@ function connect_test_case(chunks, transform, expect) {
 ].forEach(function (test_case) {
   var test = test_case.test;
 
-  buster.testCase(test_case.name, {
-    'simple response': test([simple]),
-    'multiple Set-Cookie': test([cookies]),
-    'multiple response per chunk': test([simple + simple]),
-    'response per chunk': test([simple, simple]),
-    'body split over chunks': test([
+  describe(test_case.name, function() {
+    it('simple response', test([simple]));
+    it('multiple Set-Cookie', test([cookies]));
+    it('multiple response per chunk', test([simple + simple]));
+    it('response per chunk', test([simple, simple]));
+    it('body split over chunks', test([
       simple.slice(0, simple.length - 3),
       simple.slice(simple.length - 3)
-    ]),
-    'Long response hot=false': test([long_content])
+    ]));
+    it('Long response hot=false', test([long_content]));
   });
 
 });
@@ -155,8 +158,8 @@ function connect_test_case(chunks, transform, expect) {
 ].forEach(function (test_case) {
   var test = test_case.test;
 
-  buster.testCase(test_case.name, {
-    'no content length': test([no_content_length]),
+  describe(test_case.name, function() {
+    it('no content length', test([no_content_length]));
   });
 
 });
@@ -168,12 +171,12 @@ function connect_test_case(chunks, transform, expect) {
 ].forEach(function (test_case) {
   var test = test_case.test;
 
-  buster.testCase(test_case.name, {
-    'no content length': test(
+  describe(test_case.name, function() {
+    it('no content length', test(
       [no_content_length],
       null,
       function (result) {
-        buster.assert.equals(result, [
+        assert.equal(result, [
           'HTTP/1.1 200 OK',
           'Connection: close',
           'Transfer-Encoding: identity',
@@ -182,15 +185,15 @@ function connect_test_case(chunks, transform, expect) {
           'Hello'
         ].join('\r\n'));
       }
-      ),
-    'transform changes content length': test(
+    ));
+    it('transform changes content length', test(
       [simple],
       function (body, res) {
         res.setHeader('X-Test', 'true');
         return new Buffer('Transformed');
       },
       function (result) {
-        buster.assert.equals(result, [
+        assert.equal(result, [
           'HTTP/1.1 200 OK',
           'Connection: keep-alive',
           'X-Test: true',
@@ -199,19 +202,19 @@ function connect_test_case(chunks, transform, expect) {
           'Transformed'
         ].join('\r\n'));
       }
-    ),
-    'transform error': test(
+    ));
+    it('transform error', test(
       [simple],
       function (body, res) {
         throw new Error('Transform error');
       },
       function (result) {
         var lines = result.split('\r\n');
-        buster.assert.contains(lines, 'HTTP/1.1 500 Internal Server Error');
-        buster.refute.contains(lines, 'Transfer-Encoding: chunked');
+        assert.include(lines, 'HTTP/1.1 500 Internal Server Error');
+        assert.notInclude(lines, 'Transfer-Encoding: chunked');
       }
-    ),
-    'transform error recovery': test(
+    ));
+    it('transform error recovery', test(
       [x_test, simple],
       function (body, res) {
         if (res.getHeader('X-Test')) {
@@ -222,13 +225,13 @@ function connect_test_case(chunks, transform, expect) {
       },
       function (result) {
         var messages = result.split(/(?=HTTP\/1\.1)/);
-        buster.assert.equals(messages.length, 2);
+        assert.equal(messages.length, 2);
         var lines = messages[0].split('\r\n');
-        buster.assert.contains(lines, 'HTTP/1.1 500 Internal Server Error');
-        buster.refute.contains(lines, 'Transfer-Encoding: chunked');
-        buster.assert.equals(messages[1], simple);
+        assert.include(lines, 'HTTP/1.1 500 Internal Server Error');
+        assert.notInclude(lines, 'Transfer-Encoding: chunked');
+        assert.equal(messages[1], simple);
       }
-    )
+    ));
   });
 
 });
