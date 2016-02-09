@@ -1,7 +1,7 @@
 'use strict';
 
 var BufferIO = require('./bufferio');
-var HTTPParser = require('./http-parser').HTTPParser;
+var HTTPParser = require('http-parser-js').HTTPParser;
 var Response = require('http').ServerResponse;
 var assert = require('assert');
 var stream = require('stream');
