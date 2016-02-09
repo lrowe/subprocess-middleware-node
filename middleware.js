@@ -8,24 +8,25 @@ var bufferedResponse = module.exports.bufferedResponse = function () {
     var write = res.write;
     var end = res.end;
 
-    res.write = function(chunk, encoding) {
+    res.write = function(chunk, encoding, done) {
       if (typeof chunk === 'string') {
         chunk = new Buffer(chunk, encoding);
       }
       output.push(chunk);
+      if (done) done();
       return true;
     };
 
-    res.end = function(chunk, encoding) {
+    res.end = function(chunk, encoding, done) {
+      res.write = write;
+      if (!output.length) return end.call(this, chunk, encoding, done);
       if (typeof chunk === 'string') {
         chunk = new Buffer(chunk, encoding);
       }
-      if (!output.length) return end.call(this, chunk);
       if (chunk) {
         output.push(chunk);
       }
-      res.write = write;
-      end.call(this, Buffer.concat(output));
+      end.call(this, Buffer.concat(output), done);
     };
 
     next();
@@ -45,14 +46,14 @@ module.exports.transformResponse = function (transform, options) {
 
   return function (req, res, next) {
     var end = res.end;
-    res.end = function(body) {
+    res.end = function(body, encoding, done) {
       // assumes bufferedResponse
-      if (!body) return end.call(this);
+      if (!body) return end.call(this, body, encoding, done);
       res.removeHeader('Content-Length');
       body = transform(body, res);
       assert(typeof body !== 'string');
       res.setHeader('Content-Length', body.length);
-      return end.call(this, body);
+      return end.call(this, body, encoding, done);
     };
 
     maybe_buffer(req, res, next);

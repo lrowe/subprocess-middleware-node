@@ -14,7 +14,7 @@
   "dependencies": {},
   "devDependencies": {
     "chai": "^3.5.0",
-    "connect": "3.0.0-rc.2",
+    "connect": "^3.4.1",
     "mocha": "^2.4.5"
   }
 }

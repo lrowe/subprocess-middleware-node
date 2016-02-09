@@ -56,23 +56,38 @@ var long_content = [
   long_content_body.toString()
 ].join('\r\n');
 
+
+function write_chunks(http_stream, chunks, test) {
+    var close = chunks.join('').split('\r\n').indexOf('Connection: close') != -1;
+    var index = -1;
+
+    function next() {
+      index++;
+      if (!chunks[index]) {
+        setImmediate(test);
+        return;
+      }
+      if (close && index === chunks.length - 1) {
+        http_stream.end(chunks[index], next);
+      } else {
+        http_stream.write(chunks[index], next);
+      }
+    }
+    next();
+}
+
 function identity_test_case(chunks) {
-  var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
   return function (done) {
     var http_stream = new HTTPStream();
     var out = new BufferIO();
     http_stream.pipe(out);
-    chunks.forEach(function (chunk) {
-      http_stream.write(chunk);
-    });
-    if (close) {
-      http_stream.end();
-    }
-    process.nextTick(function () {
+
+    write_chunks(http_stream, chunks, function () {
       assert.deepEqual(out.toString().split('\r\n'), chunks.join('').split('\r\n'));
       done();
     });
+
   };
 }
 
@@ -87,20 +102,13 @@ function transform_test_case(chunks, transform, expect) {
   if (!expect) {
     expect = assert.equal.bind(assert, chunks.join(''));
   }
-  var close = chunks.join('\r\n').indexOf('Connection: close') != -1;
 
   return function (done) {
     var app = transformResponse(transform);
     var http_stream = new HTTPStream({app: app});
     var out = new BufferIO();
     http_stream.pipe(out);
-    chunks.forEach(function (chunk) {
-      http_stream.write(chunk);
-    });
-    if (close) {
-      http_stream.end();
-    }
-    process.nextTick(function () {
+    write_chunks(http_stream, chunks, function () {
       expect(out.toString());
       done();
     });
@@ -110,26 +118,19 @@ function transform_test_case(chunks, transform, expect) {
 
 function connect_test_case(chunks, transform, expect) {
   transform = transform || identity_transform;
-  var close = chunks.join('').indexOf('Connection: close') != -1;
 
   return function (done) {
     var app = connect().use(transformResponse(transform));
     var http_stream = new HTTPStream({app: app});
     var out = new BufferIO();
     http_stream.pipe(out);
-    chunks.forEach(function (chunk) {
-      http_stream.write(chunk);
-    });
-    if (close) {
-      http_stream.end();
-    }
-    process.nextTick(function () {
-      if (expect) {
-          expect(out.toString());
-      } else {
-          assert.deepEqual(chunks.join('').split('\r\n'), out.toString().split('\r\n'));
-      }
-      done();
+    write_chunks(http_stream, chunks, function () {
+        if (expect) {
+            expect(out.toString());
+        } else {
+            assert.deepEqual(chunks.join('').split('\r\n'), out.toString().split('\r\n'));
+        }
+        done();
     });
   };
 }
@@ -146,7 +147,7 @@ function connect_test_case(chunks, transform, expect) {
     it('simple response', test([simple]));
     it('multiple Set-Cookie', test([cookies]));
     it('multiple response per chunk', test([simple + simple]));
-    it('response per chunk', test([simple, simple]));
+    it('single response per chunk', test([simple, simple]));
     it('body split over chunks', test([
       simple.slice(0, simple.length - 3),
       simple.slice(simple.length - 3)

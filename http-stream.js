@@ -14,6 +14,17 @@ var DummyRequest = function() {
 
 var noop = function () {};
 
+function noop_callback(data, encoding, callback) {
+  if (typeof data === 'function') {
+    callback = data;
+    data = null;
+  } else if (typeof encoding === 'function') {
+    callback = encoding;
+    encoding = null;
+  }
+  if (callback) callback();
+}
+
 DummyRequest.prototype.on = function () {};
 
 // Gets delimited string data, and emits the parsed objects
@@ -31,47 +42,71 @@ var HTTPStream = module.exports.HTTPStream = function (options) {
   this.app = options.app;
   this.connection = {
     _httpMessage: null,
-    write: this.push.bind(this),
+    write: this._connection_write.bind(this),
     writable: true,
-    cork: noop,
-    uncork: noop
+    cork: this.cork.bind(this),
+    uncork: this.uncork.bind(this)
   };
   if (options.captureConsole) {
     this._stdout = console._stdout = new BufferIO();
     this._stderr = console._stderr = new BufferIO();
   }
+this._newResponse();
 };
 
 util.inherits(HTTPStream, stream.Transform);
 
 HTTPStream.prototype._transform = function(chunk, encoding, done) {
-  var parser = this.parser;
   assert.equal(encoding, 'buffer');
-  parser.execute(chunk, 0, chunk.length);
-
-  while (parser.state === "UNINITIALIZED") {
-    parser.reinitialize(HTTPParser.RESPONSE);
-    if (parser.offset < parser.end) {
-      parser.execute(parser.chunk, parser.offset, parser.end - parser.offset);
-    }
-  }
-
-  done();
+  this._execute(chunk, 0, chunk.length, done);
 };
 
-HTTPStream.prototype.onHeadersComplete = function(info) {
-  var headers = info.headers;
-  var name, value, existing;
+HTTPStream.prototype._execute = function(chunk, offset, length, done, reinit) {
+  var parser = this.parser;
+  if (reinit) {
+    parser.reinitialize(HTTPParser.RESPONSE);
+    this._newResponse();
+  }
+  if (length) {
+    parser.execute(chunk, offset, length);
+  }
+  if (parser.state === "UNINITIALIZED") {
+    this.res.on('finish', this._execute.bind(this, chunk, parser.offset, parser.end - parser.offset, done, true));
+  } else {
+    done();
+  }
+};
+
+HTTPStream.prototype._newResponse = function() {
   var res = this.res = new Response({});
   res.connection = this.connection;
+  res._started = false;
+  res._queued_writes = [];
+  res._queued_end = false;
   this.connection._httpMessage = res;
   this.connection.writable = true;
 
   if (this._stdout) this._stdout.clear();
   if (this._stderr) this._stderr.clear();
+};
+
+HTTPStream.prototype._connection_write = function(chunk, encoding, done) {
+  this.push(chunk);
+  if (done) done();
+};
+
+HTTPStream.prototype.onHeadersComplete = function(info) {
+  var stream = this;
+  var headers = info.headers;
+  var name, value, existing;
+  var res = this.res;
 
   function out(err) {
-    if (err) throw new Error('Config error');
+    //if (err) throw new Error('Config error');
+    if (err) {
+        stream.handle_error(err);
+        return;
+    }
     res.statusCode = info.statusCode;
     res.statusMessage = info.statusMsg;
     res.sendDate = false;
@@ -90,6 +125,32 @@ HTTPStream.prototype.onHeadersComplete = function(info) {
       }
       res.setHeader(name, value);
     }
+
+    res._started = true;
+    
+    if (res._queued_writes.length) {
+      var data = Buffer.concat(res._queued_writes);
+      res._queued_writes = [];
+      try {
+        if (res._queued_end) {
+          res.end(data);
+        } else {
+          res.write(data);
+        }
+      } catch (err) {
+        stream.handle_error(err);
+        if (res._queued_end) {
+          res.end();
+        }
+      }
+    } else if (res._queued_end) {
+      try {
+        res.end();
+      } catch (err) {
+        stream.handle_error(err);
+        res.end();
+      }
+    }
   }
 
   if (this.app) {
@@ -100,64 +161,85 @@ HTTPStream.prototype.onHeadersComplete = function(info) {
       this.handle_error(err);
     }
   } else {
-    out();
+    setImmediate(out);
   }
-
 };
 
 HTTPStream.prototype.handle_error = function (err) {
+  var stream = this;
   var res = this.res;
   if (res.headersSent) throw err;
+  res._erred = true;
 
   // Ignore rest of connection
-  res.end = res.write = noop;
-  res.connection = {
-    _httpMessage: res,
-    write: noop,
-    writable: true
+
+  res.write = noop_callback;
+
+  res.end = function(data, encoding, callback) {
+    if (typeof data === 'function') {
+      callback = data;
+      data = null;
+    } else if (typeof encoding === 'function') {
+      callback = encoding;
+      encoding = null;
+    }
+    var body = 'Transform error\n\n' + err.stack;
+    if (this._stdout) {
+      body += '\n\n--log--\n' + this._stdout.toString(); 
+    }
+    if (this._stderr) {
+      body += '\n\n--warn--\n' + this._stderr.toString(); 
+    }
+    var message = [
+      'HTTP/1.1 500 Internal Server Error',
+      'Connection: keep-alive',
+      'Content-Type: text/plain; charset=utf-8',
+      'Content-Length: ' + Buffer.byteLength(body, 'utf-8'),
+      '',
+      body
+    ].join('\r\n')
+    stream.push(new Buffer(message, 'utf-8'))
+    res.emit('finish');
+    if (callback) callback();
+    res.end = noop_callback;
   };
 
-  res = this.res = new Response({});
-  res.connection = this.connection;
-  this.connection._httpMessage = res;
-  this.connection.writable = true;
-  res.statusCode = 500;
-  var body = 'Transform error\n\n' + err.stack;
-  if (this._stdout) {
-    body += '\n\n--log--\n' + this._stdout.toString(); 
-  }
-  if (this._stderr) {
-    body += '\n\n--warn--\n' + this._stderr.toString(); 
-  }
-  body = new Buffer(body);
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Content-Length', body.length);
-  res.end(body);
 };
 
 HTTPStream.prototype.onBody = function(chunk, offset, length) {
-  var res = this.res;
-  var parser = this.parser;
+  if (this.res._erred) {
+      return;
+  }
   var part = chunk.slice(offset, offset + length);
-  try {
-    res.write(part);
-  } catch (err) {
-    this.handle_error(err);
+  if (!this.res._started) {
+      this.res._queued_writes.push(part);
+  } else {
+    try {
+      this.res.write(part);
+    } catch (err) {
+      this.handle_error(err);
+    }
   }
 };
 
 HTTPStream.prototype.onMessageComplete = function() {
-  try {
-    this.res.end();
-  } catch (err) {
-    this.handle_error(err);
+  if (!this.res._started) {
+    this.res._queued_end = true;
+  } else {
+    try {
+      this.res.end();
+    } catch (err) {
+      this.handle_error(err);
+      setImmediate(this.res.end.bind(this.res));
+    }
   }
 };
 
 HTTPStream.prototype._flush = function(done) {
   if (this.parser.state === "BODY_RAW") {
+    this.res.on('finish', done);
     this.onMessageComplete();
+  } else {
+    if (done) done();
   }
-  done();
 };
