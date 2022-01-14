@@ -1,6 +1,6 @@
 {
   "name": "subprocess-middleware",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Server-side JavaScript rendering for non-JS apps.",
   "license": "MIT",
   "main": "index.js",
