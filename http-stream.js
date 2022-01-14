@@ -31,10 +31,15 @@ var HTTPStream = module.exports.HTTPStream = function (options) {
   this.app = options.app;
   this.connection = {
     _httpMessage: null,
+    _writableState: { cork: 0 },
     write: this.push.bind(this),
     writable: true,
-    cork: noop,
-    uncork: noop
+    cork: function cork() {
+      this._writableState.cork = 1;
+    },
+    uncork: function uncork() {
+      this._writableState.cork = 0;
+    }
   };
   if (options.captureConsole) {
     this._stdout = console._stdout = new BufferIO();
