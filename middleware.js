@@ -10,7 +10,7 @@ var bufferedResponse = module.exports.bufferedResponse = function () {
 
     res.write = function(chunk, encoding) {
       if (typeof chunk === 'string') {
-        chunk = new Buffer(chunk, encoding);
+        chunk = Buffer.from(chunk, encoding);
       }
       output.push(chunk);
       return true;
@@ -18,7 +18,7 @@ var bufferedResponse = module.exports.bufferedResponse = function () {
 
     res.end = function(chunk, encoding) {
       if (typeof chunk === 'string') {
-        chunk = new Buffer(chunk, encoding);
+        chunk = Buffer.from(chunk, encoding);
       }
       if (!output.length) return end.call(this, chunk);
       if (chunk) {

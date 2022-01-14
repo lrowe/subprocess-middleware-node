@@ -20,7 +20,7 @@ BufferIO.prototype._write = function(chunk, encoding, done) {
 
 BufferIO.prototype.getValue = function() {
   return Buffer.concat(this.output.map(function (data, index) {
-    return new Buffer(data, this.outputEncodings[index]);
+    return Buffer.from(data, this.outputEncodings[index]);
   }.bind(this)));
 };
 

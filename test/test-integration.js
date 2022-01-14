@@ -42,7 +42,7 @@ var cookies = [
   'Hello'
 ].join('\r\n');
 
-var long_content_body = new Buffer(130000);
+var long_content_body = Buffer.alloc(130000);
 long_content_body.fill('b');
 
 var long_content = [
@@ -187,7 +187,7 @@ function connect_test_case(chunks, transform, expect) {
       [simple],
       function (body, res) {
         res.setHeader('X-Test', 'true');
-        return new Buffer('Transformed');
+        return Buffer.from('Transformed');
       },
       function (result) {
         buster.assert.equals(result, [

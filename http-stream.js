@@ -134,7 +134,7 @@ HTTPStream.prototype.handle_error = function (err) {
   if (this._stderr) {
     body += '\n\n--warn--\n' + this._stderr.toString(); 
   }
-  body = new Buffer(body);
+  body = Buffer.from(body);
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Length', body.length);
